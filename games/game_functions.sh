@@ -7,27 +7,27 @@ mysql_query() {
 }
 
 display_health() {
-    local health=$(echo "$1" | awk '{print $1}')  # Ensure we get a single number
+    local health="$1"
     local max_health=5
     local health_bar="["
-    
+
     for ((i=1; i<=max_health; i++)); do
         if (( i <= health )); then
             health_bar+=" ❤"
         else
-            health_bar+="♡ "
+            health_bar+=" ♡"
         fi
         ((i < max_health)) && health_bar+=" "
     done
 
-    health_bar+="]"
+    health_bar+=" ]"
     echo -e "\n\033[1;31mHealth: $health_bar ($health/$max_health)\033[0m"
 }
 
 get_health() {
     local health=$(mysql_query "SELECT current_health FROM user_stats WHERE user_id = $1;")
-    # Ensure we return a single number, default to 5 if empty
-    echo "${health:-5}" | awk '{print $1}'
+    # Trim any leading/trailing whitespace and ensure only the first line is taken
+    echo "$health" | head -n 1 | tr -d '[:space:]'
 }
 
 update_health() {
@@ -85,28 +85,31 @@ show_menu() {
     local user_id=$2
     local role=$3
     local role_name=$4
-    
-    clear
-    echo -e "\n\033[1;34m=== ${role_name} Riddles ===\033[0m"
-    echo -e "User: $username"
-    echo -e "Current Score: $(get_score $user_id $role)"
-    echo -e "\n1. New Game"
+    local height=10
+    local width=40
+    local choices
+
+    choices=(
+        "1" "New Game"
+    )
     if has_unfinished_game $user_id $role; then
-        echo -e "2. Continue Game"
+        choices+=("2" "Continue Game")
     else
-        echo -e "2. Continue Game (no saved game)"
+        choices+=("2" "Continue Game (no saved game)")
     fi
-    echo -e "3. Back to Dashboard"
-    
-    while true; do
-        read -p "Select an option (1-3): " choice
-        
-        case $choice in
-            1)
+    choices+=("3" "Back to Dashboard")
+
+    chosen=$(whiptail --clear --title "=== ${role_name} Riddles ===" \
+                       --menu "Select an option:" $height $width 3 \
+                       "${choices[@]}" 3>&1 1>&2 2>&3)
+    exit_status=$?
+
+    if [ $exit_status -eq 0 ]; then
+        case "$chosen" in
+            "1")
                 play_game "new" $user_id $role "$role_name"
-                break
                 ;;
-            2)
+            "2")
                 if has_unfinished_game $user_id $role; then
                     play_game "continue" $user_id $role "$role_name"
                 else
@@ -114,15 +117,10 @@ show_menu() {
                     sleep 2
                     play_game "new" $user_id $role "$role_name"
                 fi
-                break
                 ;;
-            3)
+            "3")
                 exit 0
                 ;;
-            *)
-                echo -e "\n\033[1;31mInvalid option. Please try again.\033[0m"
-                sleep 1
-                ;;
         esac
-    done
+    fi
 }
